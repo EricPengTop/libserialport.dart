@@ -60,6 +60,9 @@ abstract class SerialPortReader {
   /// Gets a stream of data.
   Stream<Uint8List> get stream;
 
+  /// Gets a broadcast stream of data.
+  Stream<Uint8List> get broadcastStream;
+
   /// Closes the stream.
   void close();
 }
@@ -81,6 +84,7 @@ class _SerialPortReaderImpl implements SerialPortReader {
   Isolate? _isolate;
   ReceivePort? _receiver;
   StreamController<Uint8List>? __controller;
+  StreamController<Uint8List>? __broadcastController;
 
   _SerialPortReaderImpl(SerialPort port, {int? timeout})
       : _port = port,
@@ -92,10 +96,14 @@ class _SerialPortReaderImpl implements SerialPortReader {
   @override
   Stream<Uint8List> get stream => _controller.stream;
 
+  Stream<Uint8List> get broadcastStream => _broadcastController.stream;
+
   @override
   void close() {
     __controller?.close();
     __controller = null;
+    __broadcastController?.close;
+    __broadcastController = null;
   }
 
   StreamController<Uint8List> get _controller {
@@ -107,12 +115,21 @@ class _SerialPortReaderImpl implements SerialPortReader {
     );
   }
 
+  StreamController<Uint8List> get _broadcastController {
+    return __broadcastController ??= StreamController<Uint8List>.broadcast(
+      onListen: _startRead,
+      onCancel: _cancelRead,
+    );
+  }
+
   void _startRead() {
     _receiver = ReceivePort();
     _receiver!.listen((data) {
       if (data is SerialPortError) {
+        _broadcastController.addError(data);
         _controller.addError(data);
       } else if (data is Uint8List) {
+        _broadcastController.add(data);
         _controller.add(data);
       }
     });
